@@ -84,6 +84,27 @@ curl.exe -N -X POST http://127.0.0.1:8000/chat/stream `
 
 ---
 
+## Docker 部署
+
+```powershell
+docker build -t hello-llm:v2 .
+docker run --rm -p 8000:8000 --env-file .env hello-llm:v2
+```
+
+配置通过 `--env-file` 注入，镜像内不含任何密钥（`.dockerignore` 已排除 `.env`）。
+
+构建的三个要点：
+
+| 做法 | 原因 |
+|---|---|
+| `COPY requirements.txt` 放在 `COPY app` 之前 | 依赖未变时命中层缓存，改代码只需几秒重建（第二次构建可见 `CACHED`） |
+| `ENV PYTHONUNBUFFERED=1` | 否则 stdout 被缓冲，`docker logs` 看不到实时日志 |
+| `--host 0.0.0.0` | 写 `127.0.0.1` 会导致容器外部无法访问 |
+
+> 若基础镜像拉取失败（`auth.docker.io` 超时），需为 Docker 配置代理或使用国内镜像地址。
+
+---
+
 ## 接口
 
 | 方法 | 路径 | 说明 |
@@ -137,7 +158,6 @@ hello-llm/
 - 无鉴权，仅适合本机或内网使用
 - 无多轮会话记忆（每次请求独立）
 - 无请求限流与并发保护
-- 未做 Docker 镜像（`Dockerfile` 已就绪，构建步骤待补）
 - 无单元测试
 
 ---
@@ -147,7 +167,7 @@ hello-llm/
 - [x] 接入真实模型 + SSE 流式
 - [x] 分层重构与配置外置
 - [x] 上游错误分类与重试
-- [ ] Docker 打包与运行验证
+- [x] Docker 打包与运行验证（镜像内流式对话已验证）
 - [ ] 文档解析 + 向量检索（RAG）
 - [ ] 评测集与准确率指标
 - [ ] 请求日志与反馈收集
