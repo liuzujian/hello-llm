@@ -1,4 +1,4 @@
-"""LLM 客户端：只干一件事——把一句话变成一个 token 流。
+"""LLM 客户端：把对话消息变成一个 token 流。
 
 之所以不直接用 openai SDK，是为了让你亲手看清 SSE 协议长什么样。
 看懂这个文件，以后换 vLLM / 任何 OpenAI 兼容服务都能通吃。
@@ -27,7 +27,17 @@ class LLMError(RuntimeError):
         super().__init__(f"[{status}] {detail}")
 
 
-async def stream_chat(message: str, max_tokens: int = 256) -> AsyncIterator[str]:
+async def stream_chat_messages(
+    messages: list[dict],
+    max_tokens: int = 256,
+    temperature: float = 0.3,
+) -> AsyncIterator[str]:
+    """核心方法：直接把 OpenAI 格式的 messages 数组透传给上游。
+
+    上游本身就是 OpenAI 兼容协议，所以不需要把 messages 拼成一个字符串——
+    拼字符串会丢掉 role 信息（system / user / assistant 的区分），
+    多轮对话和 system prompt 都会失真。
+    """
     s = get_settings()
     url = f"{s.base_url}/chat/completions"
     headers = {
@@ -36,9 +46,9 @@ async def stream_chat(message: str, max_tokens: int = 256) -> AsyncIterator[str]
     }
     payload = {
         "model": s.model,
-        "messages": [{"role": "user", "content": message}],
+        "messages": messages,
         "max_tokens": max_tokens,
-        "temperature": 0.3,
+        "temperature": temperature,
         "stream": True,
     }
 
@@ -100,3 +110,11 @@ async def stream_chat(message: str, max_tokens: int = 256) -> AsyncIterator[str]
             raise LLMError(0, "模型响应超时") from exc
 
     raise LLMError(0, f"重试次数耗尽：{last_error}")
+
+
+async def stream_chat(message: str, max_tokens: int = 256) -> AsyncIterator[str]:
+    """单轮简写：内部转成 messages 数组后走同一条链路。"""
+    async for delta in stream_chat_messages(
+        [{"role": "user", "content": message}], max_tokens
+    ):
+        yield delta
